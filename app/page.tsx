@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/app/src/hooks/useAuth';
 import StatsCards from '@/app/src/components/dashboard/StatsCards';
 import CampaignList from '@/app/src/components/dashboard/CampaignList';
+import AppShell from '@/app/src/components/AppShell';
 
 export default function HomePage() {
   const router = useRouter();
@@ -30,16 +31,35 @@ export default function HomePage() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="text-center mb-8">
-        <h1 className="text-4xl font-bold text-gray-800 mb-4">
-          Bienvenue, {user.user_metadata?.full_name || user.email}
-        </h1>
-        <p className="text-xl text-gray-600 mb-8">
-          Prospeo — plateforme de génération de prospects
-        </p>
+    <AppShell>
+      <div className="p-8 w-full">
+        <div className="text-center mb-8">
+          <h1 className="text-4xl font-bold text-gray-800 mb-4">
+            {user.user_metadata?.full_name
+              ? `Bienvenue, ${user.user_metadata.full_name}`
+              : 'Bienvenue'}
+          </h1>
+          <p className="text-xl text-gray-600 mb-8">
+            Prospeo — plateforme de génération de prospects
+          </p>
+        </div>
+        <StatsCards />
+        <CampaignList />
       </div>
-      <StatsCards />
+    </AppShell>
+  );
+}
+
+export function CampaignsPage() {
+  const { user, loading } = useAuth();
+  if (loading) return <div>Chargement...</div>;
+  if (!user) {
+    if (typeof window !== 'undefined') window.location.href = '/auth';
+    return null;
+  }
+  return (
+    <div className="container mx-auto px-4 py-8">
+      <h1 className="text-2xl font-bold mb-6">Mes campagnes</h1>
       <CampaignList />
     </div>
   );

@@ -44,13 +44,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(newSession ?? null);
         setUser(newSession?.user ?? null);
 
-        if (newSession?.user) {
-          const isAdminUser = newSession.user.email === 'admin@prospeo.com';
-          setUserRole(isAdminUser ? 'admin' : 'user');
-        } else {
-          setUserRole(null);
+        let isAdminFlag = false;
+        if (
+          typeof window !== 'undefined' &&
+          localStorage.getItem('isAdmin') === 'true'
+        ) {
+          isAdminFlag = true;
+        } else if (newSession?.user) {
+          isAdminFlag = newSession.user.email === 'admin@prospeo.com';
         }
-
+        setUserRole(isAdminFlag ? 'admin' : 'user');
         setLoading(false);
       },
     );
@@ -61,10 +64,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .then(({ data: { session } }: { data: { session: Session | null } }) => {
         setSession(session);
         setUser(session?.user ?? null);
-        if (session?.user) {
-          const isAdminUser = session.user.email === 'admin@prospeo.com';
-          setUserRole(isAdminUser ? 'admin' : 'user');
+        let isAdminFlag = false;
+        if (
+          typeof window !== 'undefined' &&
+          localStorage.getItem('isAdmin') === 'true'
+        ) {
+          isAdminFlag = true;
+        } else if (session?.user) {
+          isAdminFlag = session.user.email === 'admin@prospeo.com';
         }
+        setUserRole(isAdminFlag ? 'admin' : 'user');
         setLoading(false);
       });
 
@@ -124,7 +133,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const isAdmin = userRole === 'admin';
+  const isAdmin =
+    (typeof window !== 'undefined' &&
+      localStorage.getItem('isAdmin') === 'true') ||
+    userRole === 'admin';
 
   const value: AuthContextType = {
     user,

@@ -30,6 +30,7 @@ import {
 import { Textarea } from '@/app/src/components/ui/textarea';
 import { Progress } from '@/app/src/components/ui/progress';
 import { toast } from '@/app/src/hooks/use-toast';
+import { useAuth } from '@/app/src/hooks/useAuth';
 
 type Campaign = Tables<'campaigns'>;
 
@@ -42,17 +43,26 @@ export default function Admin() {
   const [adminNotes, setAdminNotes] = useState('');
   const [internalStatus, setInternalStatus] = useState('');
   const queryClient = useQueryClient();
+  const { user, isAdmin } = useAuth();
+  const [errorMsg, setErrorMsg] = useState('');
 
   const { data: campaigns, isLoading } = useQuery({
-    queryKey: ['admin-campaigns'],
+    queryKey: ['admin-campaigns', user?.id],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('campaigns')
-        .select('*')
-        .order('created_date', { ascending: false });
-      if (error) throw error;
-      return data as Campaign[];
+      if (!user || !user.id) return [];
+      try {
+        const { data, error } = await supabase
+          .from('campaigns')
+          .select('*')
+          .order('created_date', { ascending: false });
+        if (error) throw error;
+        return data as Campaign[];
+      } catch (err: any) {
+        setErrorMsg(err.message || 'Erreur de chargement');
+        return [];
+      }
     },
+    enabled: !!user && !!user.id,
   });
 
   const updateCampaignMutation = useMutation({
@@ -137,6 +147,24 @@ export default function Admin() {
       setInternalStatus(selectedCampaign.internal_status || '');
     }
   }, [selectedCampaign]);
+
+  if (!user || !user.id) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-red-50 via-orange-50 to-yellow-50">
+        <div className="text-center">Chargement...</div>
+      </div>
+    );
+  }
+
+  if (errorMsg) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-red-50 via-orange-50 to-yellow-50">
+        <div className="bg-red-50 text-red-700 rounded-lg p-8 text-center font-bold shadow-lg">
+          {errorMsg}
+        </div>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (

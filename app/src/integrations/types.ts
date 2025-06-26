@@ -16,7 +16,7 @@ export type Database = {
           created_date: string;
           delivery_date: string;
           form_questions: Json | null;
-          id: number;
+          id: string;
           internal_status: string | null;
           name: string;
           prospect_files: Json | null;
@@ -25,7 +25,7 @@ export type Database = {
           status: string;
           status_color: string;
           target_volume: number;
-          user_id: number | null;
+          user_id: string | null;
           zone: string | null;
         };
         Insert: {
@@ -34,7 +34,7 @@ export type Database = {
           created_date?: string;
           delivery_date: string;
           form_questions?: Json | null;
-          id: number;
+          id?: string;
           internal_status?: string | null;
           name: string;
           prospect_files?: Json | null;
@@ -43,7 +43,7 @@ export type Database = {
           status: string;
           status_color: string;
           target_volume: number;
-          user_id?: number | null;
+          user_id?: string | null;
           zone?: string | null;
         };
         Update: {
@@ -52,7 +52,7 @@ export type Database = {
           created_date?: string;
           delivery_date?: string;
           form_questions?: Json | null;
-          id?: number;
+          id?: string;
           internal_status?: string | null;
           name?: string;
           prospect_files?: Json | null;
@@ -61,7 +61,7 @@ export type Database = {
           status?: string;
           status_color?: string;
           target_volume?: number;
-          user_id?: number | null;
+          user_id?: string | null;
           zone?: string | null;
         };
         Relationships: [
@@ -79,7 +79,7 @@ export type Database = {
           created_at: string;
           'Email professionnel': string | null;
           Entreprise: string | null;
-          id: number;
+          id: string;
           'Mot de passe': number | null;
           'Nom complet': string | null;
         };
@@ -87,7 +87,7 @@ export type Database = {
           created_at?: string;
           'Email professionnel'?: string | null;
           Entreprise?: string | null;
-          id?: number;
+          id?: string;
           'Mot de passe'?: number | null;
           'Nom complet'?: string | null;
         };
@@ -95,7 +95,7 @@ export type Database = {
           created_at?: string;
           'Email professionnel'?: string | null;
           Entreprise?: string | null;
-          id?: number;
+          id?: string;
           'Mot de passe'?: number | null;
           'Nom complet'?: string | null;
         };

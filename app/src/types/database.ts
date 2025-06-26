@@ -13,7 +13,7 @@ export type Database = {
     Tables: {
       campaigns: {
         Row: {
-          id: number;
+          id: string;
           name: string;
           status: string;
           status_color: string;
@@ -31,7 +31,7 @@ export type Database = {
           admin_notes: string | null;
         };
         Insert: {
-          id?: number;
+          id?: string;
           name: string;
           status: string;
           status_color: string;
@@ -49,7 +49,7 @@ export type Database = {
           admin_notes?: string | null;
         };
         Update: {
-          id?: number;
+          id?: string;
           name?: string;
           status?: string;
           status_color?: string;

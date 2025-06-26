@@ -4,56 +4,99 @@ import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/app/src/integrations/client';
 import { Tables } from '@/app/src/integrations/types';
-import { Button } from '@/app/src/components/ui/button';
-import { Badge } from '@/app/src/components/ui/badge';
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from '@/app/src/components/ui/card';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/app/src/components/ui/dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/app/src/components/ui/select';
-import { Textarea } from '@/app/src/components/ui/textarea';
-import { Progress } from '@/app/src/components/ui/progress';
-import { toast } from '@/app/src/hooks/use-toast';
 import { useAuth } from '@/app/src/hooks/useAuth';
-import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 
 type Campaign = Tables<'campaigns'>;
+type CampaignWithUser = Campaign & { user?: Record<string, any> };
 
 export default function AdminPage() {
   const { user, isAdmin, loading: authLoading } = useAuth();
-  const router = useRouter();
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(
     null,
   );
-  const [adminNotes, setAdminNotes] = useState('');
-  const [internalStatus, setInternalStatus] = useState('');
+  const [adminNotes, setAdminNotes] = useState<string>('');
+  const [internalStatus, setInternalStatus] = useState<string>('');
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    if (!authLoading) {
-      if (!user) {
-        router.replace('/auth');
-      } else if (!isAdmin) {
-        router.replace('/');
-      }
+    console.log('ADMIN DEBUG', { user, isAdmin, authLoading });
+    if (!authLoading && !isAdmin) {
+      // Redirection à gérer différemment si besoin
+      window.location.href = '/unauthorized';
+      return;
     }
-  }, [user, isAdmin, authLoading, router]);
+  }, [user, isAdmin, authLoading]);
 
+  const {
+    data: campaigns,
+    isLoading,
+    error,
+  } = useQuery({
+    queryKey: ['admin-campaigns'],
+    queryFn: async () => {
+      try {
+        // Fallback sans jointure : on charge juste les campagnes
+        const { data, error } = await supabase.from('campaigns').select('*');
+        if (error) throw error;
+        // On ajoute un flag pour afficher un message d'alerte dans l'UI
+        const fallbackArray = data as CampaignWithUser[];
+        (fallbackArray as any).noJoin = true;
+        return fallbackArray;
+      } catch (err: unknown) {
+        console.error('[ADMIN] Erreur dans queryFn:', err);
+        if (err instanceof Error) throw new Error(err.message);
+        throw new Error(
+          typeof err === 'object' ? JSON.stringify(err) : String(err),
+        );
+      }
+    },
+    enabled: true,
+  });
+
+  const updateCampaignMutation = useMutation({
+    mutationFn: async ({
+      id,
+      updates,
+    }: {
+      id: number;
+      updates: Partial<Campaign>;
+    }) => {
+      const filteredUpdates = { ...updates };
+      if ('created_date' in filteredUpdates && !filteredUpdates.created_date) {
+        delete filteredUpdates.created_date;
+      }
+      if (
+        'delivery_date' in filteredUpdates &&
+        !filteredUpdates.delivery_date
+      ) {
+        delete filteredUpdates.delivery_date;
+      }
+      const { data, error } = await supabase
+        .from('campaigns')
+        .update(filteredUpdates)
+        .eq('id', id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-campaigns'] });
+    },
+    onError: (error: unknown) => {
+      console.error('Erreur lors de la mise à jour de la campagne:', error);
+    },
+  });
+
+  useEffect(() => {
+    if (selectedCampaign) {
+      setAdminNotes(selectedCampaign.admin_notes || '');
+      setInternalStatus(selectedCampaign.internal_status || '');
+    }
+  }, [selectedCampaign]);
+
+  console.log('[ADMIN] Render', { isLoading, error, campaigns });
   if (authLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-red-50 via-orange-50 to-yellow-50 flex items-center justify-center">
@@ -65,104 +108,18 @@ export default function AdminPage() {
     );
   }
 
-  if (!user || !isAdmin) {
-    return null;
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-red-50 via-orange-50 to-yellow-50">
+        <div className="bg-red-50 text-red-700 rounded-lg p-8 text-center font-bold shadow-lg">
+          Erreur de chargement des campagnes :<br />
+          <pre className="text-xs text-left whitespace-pre-wrap break-all">
+            {error.message || JSON.stringify(error)}
+          </pre>
+        </div>
+      </div>
+    );
   }
-
-  const { data: campaigns, isLoading } = useQuery({
-    queryKey: ['admin-campaigns'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('campaigns')
-        .select('*')
-        .order('created_date', { ascending: false });
-      if (error) throw error;
-      return data as Campaign[];
-    },
-  });
-
-  const updateCampaignMutation = useMutation({
-    mutationFn: async ({
-      id,
-      updates,
-    }: {
-      id: number;
-      updates: Partial<Campaign>;
-    }) => {
-      const { data, error } = await supabase
-        .from('campaigns')
-        .update(updates)
-        .eq('id', id)
-        .select()
-        .single();
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-campaigns'] });
-      toast({ title: 'Campagne mise à jour avec succès' });
-    },
-    onError: (error: any) => {
-      toast({
-        title: 'Erreur',
-        description: error.message,
-        variant: 'destructive',
-      });
-    },
-  });
-
-  const getProgressPercentage = (status: string) => {
-    switch (status.toLowerCase()) {
-      case 'en attente':
-        return 0;
-      case 'en cours de prod':
-        return 50;
-      case 'livré':
-        return 100;
-      default:
-        return 0;
-    }
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status.toLowerCase()) {
-      case 'en attente':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'en cours de prod':
-        return 'bg-blue-100 text-blue-800';
-      case 'livré':
-        return 'bg-green-100 text-green-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
-  };
-
-  const handleStatusChange = (campaignId: number, newStatus: string) => {
-    updateCampaignMutation.mutate({
-      id: campaignId,
-      updates: { status: newStatus },
-    });
-  };
-
-  const handleNotesUpdate = (campaignId: number) => {
-    updateCampaignMutation.mutate({
-      id: campaignId,
-      updates: {
-        admin_notes: adminNotes,
-        internal_status: internalStatus,
-      },
-    });
-    setSelectedCampaign(null);
-    setAdminNotes('');
-    setInternalStatus('');
-  };
-
-  useEffect(() => {
-    if (selectedCampaign) {
-      setAdminNotes(selectedCampaign.admin_notes || '');
-      setInternalStatus(selectedCampaign.internal_status || '');
-    }
-  }, [selectedCampaign]);
 
   if (isLoading) {
     return (
@@ -175,151 +132,155 @@ export default function AdminPage() {
     );
   }
 
+  // Calcul des stats globales
+  const total = campaigns?.length || 0;
+  const aValider =
+    campaigns?.filter((c) => c.status?.toLowerCase() === 'à valider').length ||
+    0;
+  const enCours =
+    campaigns?.filter((c) => c.status?.toLowerCase() === 'en production')
+      .length || 0;
+  const terminees =
+    campaigns?.filter(
+      (c) =>
+        c.status?.toLowerCase() === 'terminée' ||
+        c.status?.toLowerCase() === 'terminées',
+    ).length || 0;
+  const totalProspects =
+    campaigns?.reduce((sum, c) => sum + (c.prospects_generated || 0), 0) || 0;
+  const lastCampaigns = [...(campaigns || [])]
+    .sort((a, b) => (b.created_date || '').localeCompare(a.created_date || ''))
+    .slice(0, 5);
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-red-50 via-orange-50 to-yellow-50">
-      <div className="container mx-auto px-4 py-8">
-        <h1 className="text-3xl font-bold text-center text-gray-800 mb-8">
-          Interface Administrateur
-        </h1>
-
-        <div className="space-y-6">
-          {campaigns?.map((campaign: Campaign) => (
-            <Card key={campaign.id} className="bg-white/80 backdrop-blur-sm">
-              <CardHeader>
-                <div className="flex justify-between items-start">
-                  <div>
-                    <CardTitle className="text-xl font-semibold">
-                      {campaign.name}
-                    </CardTitle>
-                    <p className="text-gray-600 mt-1">
-                      Volume cible: {campaign.target_volume} prospects
-                    </p>
-                    <p className="text-gray-600">
-                      Secteur: {campaign.sector} | Zone: {campaign.zone}
-                    </p>
-                  </div>
-                  <Badge className={getStatusColor(campaign.status)}>
-                    {campaign.status}
-                  </Badge>
-                </div>
-              </CardHeader>
-
-              <CardContent className="space-y-4">
-                {/* Progression */}
-                <div>
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-sm font-medium">Progression</span>
-                    <span className="text-sm text-gray-600">
-                      {getProgressPercentage(campaign.status)}%
-                    </span>
-                  </div>
-                  <Progress
-                    value={getProgressPercentage(campaign.status)}
-                    className="h-2"
-                  />
-                </div>
-
-                {/* Statut et gestion */}
-                <div className="flex gap-4 items-center">
-                  <Select
-                    value={campaign.status}
-                    onValueChange={(value: string) =>
-                      handleStatusChange(campaign.id, value)
+    <div>
+      <h1 className="text-3xl font-bold text-center text-gray-800 mb-8">
+        Interface Administrateur
+      </h1>
+      {/* Cards de stats globales */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-6 mb-8">
+        <div className="rounded-xl p-6 shadow-lg bg-white flex flex-col items-center border border-gray-100">
+          <div className="w-10 h-10 flex items-center justify-center rounded-full mb-2 text-2xl bg-blue-50">
+            📊
+          </div>
+          <div className="text-2xl font-extrabold text-blue-800">{total}</div>
+          <div className="text-xs text-gray-500 mt-1 font-medium uppercase tracking-wide">
+            Total campagnes
+          </div>
+        </div>
+        <div className="rounded-xl p-6 shadow-lg bg-white flex flex-col items-center border border-gray-100">
+          <div className="w-10 h-10 flex items-center justify-center rounded-full mb-2 text-2xl bg-yellow-50">
+            🟡
+          </div>
+          <div className="text-2xl font-extrabold text-yellow-800">
+            {aValider}
+          </div>
+          <div className="text-xs text-gray-500 mt-1 font-medium uppercase tracking-wide">
+            À valider
+          </div>
+        </div>
+        <div className="rounded-xl p-6 shadow-lg bg-white flex flex-col items-center border border-gray-100">
+          <div className="w-10 h-10 flex items-center justify-center rounded-full mb-2 text-2xl bg-purple-50">
+            🟣
+          </div>
+          <div className="text-2xl font-extrabold text-purple-800">
+            {enCours}
+          </div>
+          <div className="text-xs text-gray-500 mt-1 font-medium uppercase tracking-wide">
+            En production
+          </div>
+        </div>
+        <div className="rounded-xl p-6 shadow-lg bg-white flex flex-col items-center border border-gray-100">
+          <div className="w-10 h-10 flex items-center justify-center rounded-full mb-2 text-2xl bg-green-50">
+            🟢
+          </div>
+          <div className="text-2xl font-extrabold text-green-800">
+            {terminees}
+          </div>
+          <div className="text-xs text-gray-500 mt-1 font-medium uppercase tracking-wide">
+            Terminées
+          </div>
+        </div>
+        <div className="rounded-xl p-6 shadow-lg bg-white flex flex-col items-center border border-gray-100">
+          <div className="w-10 h-10 flex items-center justify-center rounded-full mb-2 text-2xl bg-orange-50">
+            👥
+          </div>
+          <div className="text-2xl font-extrabold text-orange-800">
+            {totalProspects}
+          </div>
+          <div className="text-xs text-gray-500 mt-1 font-medium uppercase tracking-wide">
+            Prospects livrés
+          </div>
+        </div>
+      </div>
+      {/* Activité récente */}
+      <div className="mb-8">
+        <h2 className="text-lg font-bold mb-2">Dernières campagnes créées</h2>
+        <ul className="divide-y divide-gray-200 bg-white rounded-xl shadow p-4">
+          {lastCampaigns.map((c) => (
+            <li
+              key={c.id}
+              className="py-2 flex flex-col sm:flex-row sm:items-center sm:justify-between"
+            >
+              <span className="font-semibold text-gray-800">{c.name}</span>
+              <span className="text-xs text-gray-500">
+                {c.created_date?.slice(0, 10) || '-'}
+              </span>
+              <span className="text-xs ml-2">{c.status}</span>
+            </li>
+          ))}
+          {lastCampaigns.length === 0 && <li>Aucune campagne récente.</li>}
+        </ul>
+      </div>
+      <div className="space-y-6">
+        <table className="min-w-full text-sm font-medium bg-white rounded-xl shadow-lg">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-4 py-3 text-left">Nom</th>
+              <th className="px-4 py-3 text-left">Email client</th>
+              <th className="px-4 py-3 text-left">Date création</th>
+              <th className="px-4 py-3 text-left">Statut</th>
+              <th className="px-4 py-3 text-left">Volume</th>
+              <th className="px-4 py-3 text-left"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {campaigns?.map((campaign: CampaignWithUser) => (
+              <tr
+                key={campaign.id}
+                className="border-b hover:bg-blue-50/40 transition-colors group"
+              >
+                <td className="px-4 py-3 font-semibold text-gray-800">
+                  {campaign.name}
+                </td>
+                <td className="px-4 py-3">{campaign.user_id || '-'}</td>
+                <td className="px-4 py-3">
+                  {campaign.created_date?.slice(0, 10) || '-'}
+                </td>
+                <td className="px-4 py-3">{campaign.status}</td>
+                <td className="px-4 py-3">
+                  {campaign.status === 'Terminée'
+                    ? `${campaign.target_volume} / ${campaign.target_volume}`
+                    : `${campaign.target_volume}${
+                        campaign.prospects_generated
+                          ? ` / ${campaign.prospects_generated}`
+                          : ''
+                      }`}
+                </td>
+                <td className="px-4 py-3">
+                  <button
+                    className="btn bg-blue-600 text-white px-4 py-2 rounded-full shadow hover:bg-blue-700"
+                    onClick={() =>
+                      (window.location.href = `/admin/campaigns/${campaign.id}`)
                     }
                   >
-                    <SelectTrigger className="w-48">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="En attente">En attente</SelectItem>
-                      <SelectItem value="En cours de prod">
-                        En cours de prod
-                      </SelectItem>
-                      <SelectItem value="Livré">Livré</SelectItem>
-                    </SelectContent>
-                  </Select>
-
-                  <Dialog>
-                    <DialogTrigger asChild>
-                      <Button
-                        variant="outline"
-                        onClick={() => setSelectedCampaign(campaign)}
-                      >
-                        Gérer
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                      <DialogHeader>
-                        <DialogTitle>Gestion de la campagne</DialogTitle>
-                      </DialogHeader>
-                      <div className="space-y-4">
-                        {/* Statut interne */}
-                        <div>
-                          <label className="block text-sm font-medium mb-2">
-                            Statut interne
-                          </label>
-                          <Select
-                            value={internalStatus}
-                            onValueChange={setInternalStatus}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Sélectionner un statut" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="À traiter">
-                                À traiter
-                              </SelectItem>
-                              <SelectItem value="En cours">En cours</SelectItem>
-                              <SelectItem value="En attente client">
-                                En attente client
-                              </SelectItem>
-                              <SelectItem value="Terminé">Terminé</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        {/* Notes admin */}
-                        <div>
-                          <label className="block text-sm font-medium mb-2">
-                            Notes administrateur
-                          </label>
-                          <Textarea
-                            value={adminNotes}
-                            onChange={(e) => setAdminNotes(e.target.value)}
-                            placeholder="Ajouter des notes..."
-                            rows={4}
-                          />
-                        </div>
-
-                        <Button
-                          onClick={() =>
-                            selectedCampaign &&
-                            handleNotesUpdate(selectedCampaign.id)
-                          }
-                          className="w-full"
-                        >
-                          Sauvegarder
-                        </Button>
-                      </div>
-                    </DialogContent>
-                  </Dialog>
-                </div>
-
-                {/* Affichage des notes déjà enregistrées */}
-                {campaign.admin_notes && (
-                  <div className="bg-gray-50 p-3 rounded-lg">
-                    <p className="text-sm font-medium text-gray-700 mb-1">
-                      Notes admin:
-                    </p>
-                    <p className="text-sm text-gray-600">
-                      {campaign.admin_notes}
-                    </p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                    Détail
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
